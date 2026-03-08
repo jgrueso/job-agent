@@ -1,0 +1,48 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Database (contains personal job data)
+data/
+*.db
+*.sqlite
+
+# Generated output (PDFs, adapted CVs)
+output/
+
+# Logs
+logs/
+*.log
+
+# Backups (created by migration scripts)
+*_backup_*/
+main_backup_*.py
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Runtime
+/tmp/job-agent.lock
+
+# Profile data (contains personal info — email, phone, CV, chat IDs)
+# Copy from examples and fill with your own data
+src/profile/*/config.json
+src/profile/*/profile.json
+# Keep the root profile.json if it exists as template

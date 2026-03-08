@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Job Agent</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #1a1a2e);
+      --card: var(--tg-theme-secondary-bg-color, #16213e);
+      --text: var(--tg-theme-text-color, #eaeaea);
+      --hint: var(--tg-theme-hint-color, #888);
+      --accent: var(--tg-theme-button-color, #2196f3);
+      --accent-text: var(--tg-theme-button-text-color, #fff);
+      --danger: #e53935;
+      --warning: #f9a825;
+      --success: #43a047;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--card);
+      padding: 12px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .header h1 { font-size: 16px; font-weight: 700; }
+    .header .sub { font-size: 12px; color: var(--hint); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: var(--card);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .tab {
+      flex: 1; padding: 10px; text-align: center;
+      font-size: 13px; font-weight: 500; color: var(--hint);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Job list */
+    .list { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 14px;
+      cursor: pointer;
+      transition: transform 0.15s;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .card:active { transform: scale(0.98); }
+
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .card-title { font-weight: 600; font-size: 14px; line-height: 1.3; }
+    .card-company { color: var(--hint); font-size: 12px; margin-top: 2px; }
+
+    .score-badge {
+      flex-shrink: 0;
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px;
+    }
+    .score-high { background: rgba(67,160,71,0.2); color: #66bb6a; }
+    .score-mid  { background: rgba(249,168,37,0.2); color: #ffc107; }
+    .score-low  { background: rgba(229,57,53,0.2);  color: #ef5350; }
+
+    .card-meta {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .tag {
+      font-size: 11px; padding: 3px 8px; border-radius: 20px;
+      background: rgba(255,255,255,0.08); color: var(--hint);
+    }
+    .tag.remote { background: rgba(33,150,243,0.15); color: #64b5f6; }
+    .tag.apply  { background: rgba(67,160,71,0.15); color: #81c784; }
+    .tag.consider { background: rgba(249,168,37,0.15); color: #ffd54f; }
+    .tag.skip   { background: rgba(229,57,53,0.15); color: #e57373; }
+
+    .bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); margin-top: 10px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s; }
+
+    /* Detail view */
+    .detail { display: none; padding: 16px; }
+    .detail.active { display: block; }
+
+    .back-btn {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--accent); font-size: 14px; font-weight: 500;
+      cursor: pointer; margin-bottom: 16px;
+    }
+
+    .detail-title { font-size: 18px; font-weight: 700; line-height: 1.3; }
+    .detail-company { color: var(--hint); margin-top: 4px; font-size: 14px; }
+
+    .detail-score {
+      display: flex; align-items: center; gap: 10px; margin: 16px 0;
+    }
+    .big-score {
+      font-size: 36px; font-weight: 800;
+    }
+    .score-info { flex: 1; }
+    .score-label { font-size: 12px; color: var(--hint); }
+    .score-summary { font-size: 13px; line-height: 1.5; color: var(--text); margin-top: 4px; }
+
+    .section-title {
+      font-size: 12px; font-weight: 600; color: var(--hint);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin: 16px 0 8px;
+    }
+
+    .skill-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 13px;
+    }
+    .skill-icon { font-size: 14px; width: 20px; text-align: center; }
+
+    .missing-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .missing-tag {
+      font-size: 12px; padding: 4px 10px; border-radius: 20px;
+      background: rgba(229,57,53,0.15); color: #ef9a9a;
+    }
+
+    .actions {
+      display: flex; gap: 8px; margin-top: 20px; padding-bottom: 20px;
+    }
+    .btn {
+      flex: 1; padding: 13px 8px; border-radius: 10px;
+      border: none; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn-approve { background: var(--success); color: #fff; }
+    .btn-reject  { background: var(--danger); color: #fff; }
+    .btn-later   { background: rgba(255,255,255,0.1); color: var(--text); }
+    .btn-cv      { background: var(--accent); color: var(--accent-text); }
+
+    .link-btn {
+      display: block; text-align: center;
+      color: var(--accent); font-size: 13px; margin-top: 12px;
+      text-decoration: none; padding: 10px;
+    }
+
+    .empty {
+      text-align: center; padding: 60px 20px; color: var(--hint);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+    .loading {
+      text-align: center; padding: 40px; color: var(--hint);
+    }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.85); color: #fff;
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 13px; opacity: 0; transition: opacity 0.3s;
+      pointer-events: none; z-index: 999;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div class="header">
+    <div>
+      <div class="header h1" id="profile-name">Job Agent</div>
+      <div class="sub" id="job-count">Cargando...</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('pending')">Pendientes</div>
+    <div class="tab" onclick="switchTab('approved')">Aprobadas</div>
+  </div>
+
+  <div id="list-view">
+    <div class="list" id="job-list">
+      <div class="loading">Cargando ofertas...</div>
+    </div>
+  </div>
+
+  <div id="detail-view" class="detail">
+    <div class="back-btn" onclick="showList()">‹ Volver</div>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+
+  let initData = tg.initData;
+  let currentTab = 'pending';
+  let jobs = [];
+  let currentJob = null;
+
+  // ── API ────────────────────────────────────────────────────────────────────
+
+  async function api(path, method = 'GET', body = null) {
+    const opts = {
+      method,
+      headers: { 'X-Init-Data': initData, 'Content-Type': 'application/json' }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(path, opts);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function scoreClass(s) {
+    if (s >= 75) return 'score-high';
+    if (s >= 60) return 'score-mid';
+    return 'score-low';
+  }
+
+  function recTag(rec) {
+    const map = { Apply: ['apply','🚀 Aplicar'], Consider: ['consider','🤔 Considerar'], Skip: ['skip','🛑 Omitir'] };
+    const [cls, label] = map[rec] || ['consider','🤔 Considerar'];
+    return `<span class="tag ${cls}">${label}</span>`;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // ── Load jobs ──────────────────────────────────────────────────────────────
+
+  async function loadJobs() {
+    document.getElementById('job-list').innerHTML = '<div class="loading">Cargando...</div>';
+    try {
+      // Load profile name
+      const profile = await api('/api/profile');
+      document.getElementById('profile-name').textContent = `👋 ${profile.name}`;
+
+      jobs = await api(`/api/jobs?status=${currentTab}`);
+      renderList();
+    } catch (e) {
+      document.getElementById('job-list').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div>${e.message}</div></div>`;
+    }
+  }
+
+  function renderList() {
+    const label = currentTab === 'pending' ? 'pendiente' : 'aprobada';
+    document.getElementById('job-count').textContent =
+      jobs.length ? `${jobs.length} oferta${jobs.length !== 1 ? 's' : ''} ${label}${jobs.length !== 1 ? 's' : ''}` : `Sin ofertas ${label}s`;
+
+    if (!jobs.length) {
+      document.getElementById('job-list').innerHTML =
+        `<div class="empty"><div class="empty-icon">${currentTab === 'pending' ? '🎉' : '📋'}</div><div>No hay ofertas ${label}s</div></div>`;
+      return;
+    }
+
+    document.getElementById('job-list').innerHTML = jobs.map((j, i) => `
+      <div class="card" onclick="showDetail(${i})">
+        <div class="card-top">
+          <div>
+            <div class="card-title">${j.title}</div>
+            <div class="card-company">${j.company}</div>
+          </div>
+          <div class="score-badge ${scoreClass(j.match_score)}">${j.match_score}%</div>
+        </div>
+        <div class="card-meta">
+          ${j.is_remote ? '<span class="tag remote">🌍 Remoto</span>' : '<span class="tag">🏢 Presencial</span>'}
+          ${recTag(j.recommendation)}
+          <span class="tag">${j.source}</span>
+        </div>
+        <div class="bar"><div class="bar-fill" style="width:${j.match_score}%"></div></div>
+      </div>
+    `).join('');
+  }
+
+  // ── Detail view ────────────────────────────────────────────────────────────
+
+  function showDetail(idx) {
+    currentJob = jobs[idx];
+    const j = currentJob;
+
+    const skillsHtml = (j.skills_match || []).slice(0, 8).map(s => {
+      const icon = s.has ? '✅' : (s.importance === 'nice-to-have' ? '⚠️' : '❌');
+      return `<div class="skill-row"><span class="skill-icon">${icon}</span>${s.skill}</div>`;
+    }).join('');
+
+    const missingHtml = (j.skills_missing || []).length
+      ? `<div class="section-title">Brechas</div>
+         <div class="missing-tags">${j.skills_missing.map(s => `<span class="missing-tag">${s}</span>`).join('')}</div>`
+      : '';
+
+    const salary = j.salary_info && j.salary_info !== 'Not specified' ? j.salary_info : null;
+
+    const approveBtn = currentTab === 'pending'
+      ? `<button class="btn btn-approve" onclick="doAction('approve')">✅ Aprobar</button>
+         <button class="btn btn-reject" onclick="doAction('reject')">❌ Rechazar</button>
+         <button class="btn btn-later" onclick="doAction('later')">⏸</button>`
+      : `<button class="btn btn-cv" onclick="downloadCV()">📄 Descargar CV</button>`;
+
+    document.getElementById('detail-content').innerHTML = `
+      <div class="detail-title">${j.title}</div>
+      <div class="detail-company">${j.company} · ${j.source}</div>
+
+      <div class="detail-score">
+        <div class="big-score ${scoreClass(j.match_score)}">${j.match_score}%</div>
+        <div class="score-info">
+          <div class="score-label">Match score ${recTag(j.recommendation)}</div>
+          <div class="score-summary">${j.match_summary || ''}</div>
+        </div>
+      </div>
+
+      ${salary ? `<div class="tag" style="display:inline-block;margin-bottom:8px">💰 ${salary}</div>` : ''}
+
+      <div class="section-title">Skills</div>
+      ${skillsHtml || '<div style="color:var(--hint);font-size:13px">Sin detalle disponible</div>'}
+
+      ${missingHtml}
+
+      <div class="actions">${approveBtn}</div>
+      <a class="link-btn" href="${j.url}" target="_blank">🔗 Ver oferta completa</a>
+    `;
+
+    document.getElementById('list-view').style.display = 'none';
+    document.getElementById('detail-view').classList.add('active');
+    tg.BackButton.show();
+    tg.BackButton.onClick(showList);
+  }
+
+  function showList() {
+    document.getElementById('detail-view').classList.remove('active');
+    document.getElementById('list-view').style.display = '';
+    tg.BackButton.hide();
+    currentJob = null;
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
+  async function doAction(action) {
+    if (!currentJob) return;
+    try {
+      await api(`/api/jobs/${currentJob.id}/action`, 'POST', { action });
+      const msgs = { approve: '✅ Aprobada', reject: '❌ Rechazada', later: '⏸️ Para después' };
+      showToast(msgs[action]);
+      jobs = jobs.filter(j => j.id !== currentJob.id);
+      showList();
+      renderList();
+    } catch (e) {
+      showToast('Error: ' + e.message);
+    }
+  }
+
+  function downloadCV() {
+    if (!currentJob) return;
+    const url = `/api/jobs/${currentJob.id}/cv?x_init_data=${encodeURIComponent(initData)}`;
+    window.open(url, '_blank');
+  }
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach((el, i) => {
+      el.classList.toggle('active', (i === 0 && tab === 'pending') || (i === 1 && tab === 'approved'));
+    });
+    showList();
+    loadJobs();
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadJobs();
+</script>
+</body>
+</html>

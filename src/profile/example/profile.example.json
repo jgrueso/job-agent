@@ -1,0 +1,48 @@
+{
+  "personal": {
+    "name": "Your Full Name",
+    "title": "Senior Frontend Engineer",
+    "email": "you@email.com",
+    "phone": "+1 555 000 0000",
+    "linkedin": "https://linkedin.com/in/yourhandle",
+    "location": "Your City, Country",
+    "availability": "Remote"
+  },
+  "target": {
+    "roles": ["Senior Frontend Engineer", "Frontend Architect"],
+    "min_match_score": 65,
+    "preferred_stack": ["React", "TypeScript", "Next.js"]
+  },
+  "summary": "2-3 sentences about your background and what you're looking for.",
+  "experience": [
+    {
+      "title": "Senior Frontend Engineer",
+      "company": "Acme Corp",
+      "period": "2021 - Present",
+      "location": "Remote",
+      "achievements": [
+        "Led migration from CRA to Next.js, reducing bundle size by 40%",
+        "Built design system used across 5 product teams",
+        "Mentored 3 junior engineers"
+      ]
+    }
+  ],
+  "skills": {
+    "languages": ["TypeScript", "JavaScript", "HTML", "CSS"],
+    "frameworks": ["React", "Next.js", "Vue"],
+    "tools": ["Git", "Docker", "Webpack", "Vite"],
+    "soft": ["Leadership", "Agile/Scrum", "Mentoring"]
+  },
+  "education": [
+    {
+      "degree": "B.Sc. Systems Engineering",
+      "institution": "University Name",
+      "year": "2015"
+    }
+  ],
+  "certifications": [],
+  "languages_spoken": [
+    {"language": "English", "level": "Professional"},
+    {"language": "Spanish", "level": "Native"}
+  ]
+}
