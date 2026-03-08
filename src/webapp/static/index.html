@@ -369,10 +369,15 @@
     }
   }
 
-  function downloadCV() {
+  async function downloadCV() {
     if (!currentJob) return;
-    const url = `/api/jobs/${currentJob.id}/cv?x_init_data=${encodeURIComponent(initData)}`;
-    window.open(url, '_blank');
+    showToast('Enviando PDF a tu chat...');
+    try {
+      await api(`/api/jobs/${currentJob.id}/send-cv`, 'POST');
+      showToast('📄 PDF enviado a tu chat de Telegram');
+    } catch(e) {
+      showToast('Error: ' + e.message);
+    }
   }
 
   // ── Tabs ───────────────────────────────────────────────────────────────────

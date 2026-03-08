@@ -20,21 +20,26 @@ HEADERS = {
 }
 
 
-async def _fetch_job_detail(client: httpx.AsyncClient, job_id: str) -> str:
+async def _fetch_job_detail(client: httpx.AsyncClient, job_id: str) -> tuple[str, bool]:
+    """Returns (description_text, is_closed)."""
     try:
         url = f"https://www.linkedin.com/jobs/view/{job_id}/"
         resp = await client.get(url, headers=HEADERS, timeout=15)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "lxml")
+            # Detect closed/expired offers
+            page_text = soup.get_text(" ", strip=True).lower()
+            if "no longer accepting applications" in page_text or "ya no acepta solicitudes" in page_text:
+                return "", True
             desc = soup.find("div", {"class": "description__text"})
             if desc:
-                return desc.get_text(separator="\n", strip=True)
+                return desc.get_text(separator="\n", strip=True), False
     except Exception:
         pass
-    return ""
+    return "", False
 
 
-async def fetch_jobs(search_queries: list[str], profile_id: str) -> list[dict]:
+async def fetch_jobs(search_queries: list[str], profile_id: str, geo_id: str | None = None) -> list[dict]:
     results = []
     seen_ids = set()
 
@@ -47,6 +52,8 @@ async def fetch_jobs(search_queries: list[str], profile_id: str) -> list[dict]:
                 "keywords": query,
                 "f_WT": "2",  # Remote
             }
+            if geo_id:
+                params["geoId"] = geo_id
 
             try:
                 resp = await client.get(LINKEDIN_BASE, params=params)
@@ -84,7 +91,10 @@ async def fetch_jobs(search_queries: list[str], profile_id: str) -> list[dict]:
                     salary = salary_tag.get_text(strip=True) if salary_tag else "Not specified"
 
                     await asyncio.sleep(1.5)
-                    description = await _fetch_job_detail(client, li_id)
+                    description, is_closed = await _fetch_job_detail(client, li_id)
+                    if is_closed:
+                        print(f"[LinkedIn:{profile_id}] Skipping closed offer: {title} @ {company}")
+                        continue
 
                     job_hash = hashlib.md5(li_id.encode()).hexdigest()
                     results.append({

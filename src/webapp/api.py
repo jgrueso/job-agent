@@ -9,9 +9,12 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, parse_qsl
 
-from fastapi import FastAPI, HTTPException, Header, Query
+import httpx
+
+from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.database.db import (
     get_pending_jobs, get_approved_jobs, get_job, update_job_status,
@@ -25,6 +28,16 @@ PROFILES_DIR = Path(__file__).parent.parent / "profile"
 
 app = FastAPI(title="Job Agent WebApp API")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+class NgrokBypassMiddleware(BaseHTTPMiddleware):
+    """Sets the ngrok browser-warning bypass cookie on every response."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.set_cookie("ngrok.skipBrowserWarning", "true", max_age=60 * 60 * 24 * 365)
+        return response
+
+app.add_middleware(NgrokBypassMiddleware)
 
 
 def _verify_telegram_init_data(init_data: str) -> dict | None:
@@ -167,3 +180,40 @@ async def download_cv(job_id: str, x_init_data: str = Header(None)):
         filename=filepath.name,
         media_type="application/pdf",
     )
+
+
+@app.post("/api/jobs/{job_id}/send-cv")
+async def send_cv_to_chat(job_id: str, x_init_data: str = Header(None)):
+    """Generate CV PDF and send it directly to the user's Telegram chat."""
+    if not x_init_data:
+        raise HTTPException(401, "Missing init data")
+    user = _verify_telegram_init_data(x_init_data)
+    if not user:
+        raise HTTPException(403, "Invalid init data")
+
+    profile = _get_profile_by_telegram_id(user["id"])
+    if not profile:
+        raise HTTPException(404, "Profile not configured")
+
+    job = await get_job(job_id, profile["id"])
+    if not job or not job.get("cv_adapted"):
+        raise HTTPException(404, "CV not found")
+
+    cfg = json.loads((PROFILES_DIR / profile["id"] / "config.json").read_text())
+    candidate_name = cfg.get("name", profile["id"])
+    filepath = render_to_pdf(job["cv_adapted"], job["title"], job["company"], candidate_name)
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = user["id"]
+    async with httpx.AsyncClient() as client:
+        with open(filepath, "rb") as f:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendDocument",
+                data={"chat_id": chat_id, "caption": f"📄 CV — {job['title']} @ {job['company']}"},
+                files={"document": (filepath.name, f, "application/pdf")},
+                timeout=30,
+            )
+    if not resp.is_success:
+        raise HTTPException(500, f"Telegram error: {resp.text}")
+
+    return {"ok": True}

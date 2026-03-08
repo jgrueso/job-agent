@@ -23,6 +23,28 @@ logger = logging.getLogger(__name__)
 PROFILES_DIR = Path(__file__).parent.parent / "profile"
 
 
+_ENGLISH_MARKERS = [
+    " the ", " and ", " you ", " will ", " your ", " with ", " for ", " are ", " this ",
+    " that ", " have ", " from ", " our ", " team ", " work ", " role ", " about ",
+    "you will", "we are", "we're looking", "you'll be", "requirements:", "responsibilities:",
+    "what you'll do", "who you are", "about the role", "about us",
+]
+_SPANISH_MARKERS = [
+    " el ", " la ", " los ", " las ", " una ", " con ", " para ", " por ", " que ", " del ",
+    " se ", " en ", " es ", " su ", " sus ", " nos ", " más ",
+    "buscamos", "requisitos", "responsabilidades", "ofrecemos", "sobre nosotros",
+]
+
+
+def _is_english_text(text: str) -> bool:
+    """Heuristic: returns True if the text is predominantly English (not Spanish)."""
+    t = text.lower()
+    en_hits = sum(1 for m in _ENGLISH_MARKERS if m in t)
+    es_hits = sum(1 for m in _SPANISH_MARKERS if m in t)
+    # Consider English if English markers are clearly dominant
+    return en_hits >= 6 and en_hits > es_hits * 2
+
+
 def _keyword_prefilter(job: dict, config: dict) -> bool:
     """
     Fast keyword check before spending API tokens.
@@ -77,6 +99,7 @@ async def run_pipeline_for_profile(app, config: dict):
 
     logger.info(f"[{name}] Pipeline starting...")
 
+    is_latam_profile = "Colombia" in config.get("markets", []) or "LATAM" in config.get("markets", [])
     all_jobs = []
 
     # RemoteOK
@@ -103,11 +126,13 @@ async def run_pipeline_for_profile(app, config: dict):
     except Exception as e:
         logger.error(f"[{name}] WWR error: {e}")
 
-    # LinkedIn
+    # LinkedIn — use geo filter for LATAM/Colombia profiles
+    linkedin_geo_id = "100446943" if is_latam_profile else None
     try:
         jobs = await linkedin_scraper.fetch_jobs(
             search_queries=queries.get("linkedin", []),
             profile_id=profile_id,
+            geo_id=linkedin_geo_id,
         )
         logger.info(f"[{name}] LinkedIn: {len(jobs)} candidate jobs")
         all_jobs.extend(jobs)
@@ -115,7 +140,6 @@ async def run_pipeline_for_profile(app, config: dict):
         logger.error(f"[{name}] LinkedIn error: {e}")
 
     # Portales Colombia/LATAM (Computrabajo, Elempleo, Indeed)
-    is_latam_profile = "Colombia" in config.get("markets", []) or "LATAM" in config.get("markets", [])
     if is_latam_profile:
         latam_keywords = queries.get("computrabajo_keywords") or queries.get("wwr_keywords", [])
         latam_exclude = queries.get("wwr_exclude", [])
@@ -168,10 +192,23 @@ async def run_pipeline_for_profile(app, config: dict):
 
     # Cap at 8 jobs per pipeline run to respect Groq daily token limits
     if len(new_jobs) > 8:
-        logger.info(f"[{name}] Capping to 8 jobs (sorted by source priority)")
-        # Prioritize: LinkedIn > Computrabajo > Elempleo > Indeed > WWR > RemoteOK
-        priority = {"LinkedIn": 0, "Computrabajo": 1, "Elempleo": 2, "Indeed": 3, "WeWorkRemotely": 4, "RemoteOK": 5}
-        new_jobs = sorted(new_jobs, key=lambda j: priority.get(j.get("source", ""), 9))[:15]
+        logger.info(f"[{name}] Capping to 15 jobs (round-robin by source)")
+        # Round-robin sampling: take 3 from each source to avoid LinkedIn monopolizing LATAM runs
+        from collections import defaultdict
+        by_source: dict[str, list] = defaultdict(list)
+        for j in new_jobs:
+            by_source[j.get("source", "Other")].append(j)
+        # Sort within each source by insertion order (already sorted by recency from scrapers)
+        sampled: list[dict] = []
+        max_per_source = 4 if is_latam_profile else 8
+        for source_jobs in by_source.values():
+            sampled.extend(source_jobs[:max_per_source])
+        # Final sort by LATAM-aware priority
+        if is_latam_profile:
+            priority = {"Computrabajo": 0, "Elempleo": 1, "Indeed": 2, "LinkedIn": 3, "WeWorkRemotely": 4, "RemoteOK": 5}
+        else:
+            priority = {"LinkedIn": 0, "WeWorkRemotely": 1, "RemoteOK": 2, "Computrabajo": 3, "Elempleo": 4, "Indeed": 5}
+        new_jobs = sorted(sampled, key=lambda j: priority.get(j.get("source", ""), 9))[:15]
 
     # Evaluate + adapt
     for job in new_jobs:
@@ -179,9 +216,16 @@ async def run_pipeline_for_profile(app, config: dict):
             logger.info(f"[{name}] Evaluating: {job['title']} @ {job['company']}")
             evaluated = await evaluate_job(job, config["profile_data"], primary_language=primary_language)
 
+            # Auto-detect English-only job description for Spanish profiles (pre-AI heuristic)
+            if primary_language == "Spanish" and not evaluated.get("requires_english"):
+                desc_text = job.get("raw_description", "")
+                if desc_text and _is_english_text(desc_text):
+                    evaluated["requires_english"] = True
+                    logger.info(f"[{name}] Auto-detected English-only job description")
+
             # Extra penalty: if profile prefers Spanish and job requires English, reduce score further
             if primary_language == "Spanish" and evaluated.get("requires_english"):
-                penalty = 15
+                penalty = 20
                 evaluated["match_score"] = max(0, evaluated["match_score"] - penalty)
                 logger.info(f"[{name}] Language penalty -{penalty} (requires English) → {evaluated['match_score']}%")
 
