@@ -33,10 +33,7 @@ async def _fetch_description(client: httpx.AsyncClient, url: str) -> str:
         if resp.status_code != 200:
             return ""
         soup = BeautifulSoup(resp.text, "html.parser")
-        desc = (
-            soup.find("div", class_=re.compile(r"descripcion|description|job-desc|oferta", re.I))
-            or soup.find("section", class_=re.compile(r"descripcion|description", re.I))
-        )
+        desc = soup.find(class_="js-description")
         return _clean(desc.get_text(" ")) if desc else ""
     except Exception:
         return ""
@@ -58,29 +55,16 @@ async def fetch_jobs(keywords: list[str], exclude_keywords: list[str], profile_i
                     continue
 
                 soup = BeautifulSoup(resp.text, "html.parser")
-
-                # Job cards
-                cards = (
-                    soup.find_all("div", class_=re.compile(r"EO_ItemJob|job-item|oferta", re.I))
-                    or soup.find_all("article", class_=re.compile(r"job|oferta", re.I))
-                )
+                cards = soup.find_all("div", class_="result-item")
                 logger.info(f"[Elempleo] '{keyword}': {len(cards)} cards found")
 
                 for card in cards[:max_per_keyword]:
                     try:
-                        # Title + link
-                        title_tag = (
-                            card.find("a", class_=re.compile(r"title|titulo|job-title|EO_TitleJob", re.I))
-                            or card.find("h2")
-                            or card.find("h3")
-                        )
+                        title_tag = card.find("a", class_="js-offer-title")
                         if not title_tag:
                             continue
                         title = _clean(title_tag.get_text())
                         href = title_tag.get("href", "")
-                        if not href:
-                            href = card.find("a", href=True)
-                            href = href["href"] if href else ""
                         if not href:
                             continue
                         job_url = href if href.startswith("http") else BASE_URL + href
@@ -89,22 +73,18 @@ async def fetch_jobs(keywords: list[str], exclude_keywords: list[str], profile_i
                         if job_id in seen_ids:
                             continue
 
-                        title_lower = title.lower()
-                        if any(ex in title_lower for ex in exclude_set):
+                        if any(ex in title.lower() for ex in exclude_set):
                             continue
 
                         seen_ids.add(job_id)
 
-                        # Company
-                        company_tag = card.find(class_=re.compile(r"company|empresa|EO_Company", re.I))
+                        company_tag = card.find("span", class_="info-company-name")
                         company = _clean(company_tag.get_text()) if company_tag else "No especificada"
 
-                        # Location
-                        loc_tag = card.find(class_=re.compile(r"location|ciudad|EO_City|ubicacion", re.I))
-                        location = _clean(loc_tag.get_text()) if loc_tag else "Colombia"
+                        city_tag = card.find("span", class_="info-city")
+                        location = _clean(city_tag.get_text()) if city_tag else "Colombia"
 
-                        # Salary
-                        sal_tag = card.find(class_=re.compile(r"salary|salario|EO_Salary", re.I))
+                        sal_tag = card.find("span", class_="info-salary")
                         salary = _clean(sal_tag.get_text()) if sal_tag else "No especificado"
 
                         card_text = card.get_text().lower()
