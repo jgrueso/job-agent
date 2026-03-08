@@ -118,14 +118,26 @@ To get your `telegram_chat_id`: start the bot and send `/myid`.
 
 ### 4. Start the public tunnel (required for TWA)
 
+Use **ngrok** with a free static domain (recommended — URL never changes):
+
 ```bash
-cloudflared tunnel --url http://localhost:8080
-# Copy the https://xxx.trycloudflare.com URL to WEBAPP_URL in .env
+# One-time setup
+ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
+
+# Start tunnel (always the same URL)
+ngrok http 8080 --url=your-static-domain.ngrok-free.dev
 ```
+
+Get a free static domain at [dashboard.ngrok.com/domains](https://dashboard.ngrok.com/domains).
+Set `WEBAPP_URL=https://your-static-domain.ngrok-free.dev` in `.env`.
 
 ### 5. Run
 
 ```bash
+# Terminal 1 — tunnel (keep running)
+ngrok http 8080 --url=your-static-domain.ngrok-free.dev
+
+# Terminal 2 — bot
 python main.py
 ```
 
@@ -160,6 +172,10 @@ Each job notification includes a **"Ver en App"** button that opens a mini web U
 | Follow-up reminders | 14:00 UTC daily | Ping approved jobs older than 5 days |
 | Skill gap report | Mondays 13:00 UTC | Most common missing skills this week |
 
+## Modality filter
+
+Set `"modality": ["remote"]` in `config.json` to automatically discard on-site jobs after AI evaluation. Use `["remote", "hybrid"]` to allow both.
+
 ## LATAM support
 
 For profiles with `"markets": ["Colombia", "LATAM"]`, the agent additionally scrapes:
@@ -169,11 +185,27 @@ For profiles with `"markets": ["Colombia", "LATAM"]`, the agent additionally scr
 
 Set `"primary_language": "Spanish"` in config.json to get evaluations, CV, cover letters, and interview prep in Spanish. English-required jobs receive a 15-point score penalty.
 
+## Profile config reference
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `id` | Unique profile identifier | `"jeferson"` |
+| `name` | Short display name | `"JGrueso"` |
+| `telegram_chat_id` | Your Telegram chat ID (from `/myid`) | `1270658267` |
+| `min_match_score` | Minimum AI score to notify (0–100) | `65` |
+| `primary_language` | `"English"` or `"Spanish"` | `"Spanish"` |
+| `salary_currency` | `"USD"` or `"COP"` | `"COP"` |
+| `salary_min` | Minimum acceptable salary | `7500000` |
+| `modality` | `["remote"]`, `["hybrid"]`, or `["remote","hybrid"]` | `["remote"]` |
+| `markets` | `["USA","Europe"]` or `["Colombia","LATAM"]` | `["Colombia","LATAM"]` |
+| `search_queries` | Keywords per job board | see example above |
+
 ## Cost estimate
 
-Under normal usage (2 profiles, 6h interval, ~8 jobs/cycle):
-- Anthropic: ~$0.05–0.15/day
+Under normal usage (3 profiles, 6h interval, ~8 jobs/cycle):
+- Anthropic: ~$0.05–0.20/day
 - Groq: $0 (free tier, 100k tokens/day)
+- ngrok: $0 (free static domain)
 - Infrastructure: runs locally or on any $5/mo VPS
 
 ## License

@@ -110,16 +110,19 @@ async def run_all():
     logger.info(f"WebApp (TWA) listening on port {webapp_port}")
 
     try:
-        async with ptb_app:
-            await ptb_app.updater.start_polling(
-                drop_pending_updates=True,
-                allowed_updates=["message", "callback_query"],
-            )
-            await ptb_app.start()
-            await uvicorn_server.serve()
-            await ptb_app.updater.stop()
-            await ptb_app.stop()
+        await ptb_app.initialize()
+        await ptb_app.start()
+        await ptb_app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query"],
+        )
+        # Run post_init manually (schedules DB init + pipeline jobs)
+        await post_init(ptb_app)
+        await uvicorn_server.serve()
     finally:
+        await ptb_app.updater.stop()
+        await ptb_app.stop()
+        await ptb_app.shutdown()
         LOCK_FILE.unlink(missing_ok=True)
 
 

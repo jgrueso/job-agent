@@ -185,6 +185,13 @@ async def run_pipeline_for_profile(app, config: dict):
                 evaluated["match_score"] = max(0, evaluated["match_score"] - penalty)
                 logger.info(f"[{name}] Language penalty -{penalty} (requires English) → {evaluated['match_score']}%")
 
+            # Modality filter: skip on-site jobs for remote-only profiles
+            modality = config.get("modality", [])
+            if modality == ["remote"] and not evaluated.get("is_remote", True):
+                logger.info(f"[{name}] Skip presencial — {job['title']} @ {job['company']}")
+                await save_job({**evaluated, "status": "low_match"})
+                continue
+
             if evaluated["match_score"] < min_score:
                 logger.info(f"[{name}] Skip {evaluated['match_score']}% — {job['title']} @ {job['company']}")
                 await save_job({**evaluated, "status": "low_match"})
